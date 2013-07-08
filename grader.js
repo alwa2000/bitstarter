@@ -22,18 +22,24 @@ References:
 */
 
 var fs = require('fs');
+var rest = require('restler');
 var program = require('commander');
 var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://vast-scrubland-6864.herokuapp.com/";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
     if(!fs.existsSync(instr)) {
-        console.log("%s does not exist. Exiting.", instr);
-        process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
+	console.log("%s does not exist. Exiting.", instr);
+	process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
     }
     return instr;
+};
+
+var assertURLExists = function(url) {
+    return url.toString();
 };
 
 var cheerioHtmlFile = function(htmlfile) {
@@ -49,10 +55,29 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
-        var present = $(checks[ii]).length > 0;
-        out[checks[ii]] = present;
+	var present = $(checks[ii]).length > 0;
+	out[checks[ii]] = present;
     }
     return out;
+};
+
+var buildfn = function(fileurl, checksfile) {
+    var response2console = function(result, response) {
+	if (result instanceof Error) {
+	    console.error('Error: ' + util.format(response.message));
+	} else {
+	    console.error("Received %s", result);
+	    //fs.writeFileSync(csvfile, result);
+	    //csv2console(csvfile, headers);
+	    return checkHtmlFile(result, checksfile);
+	}
+    };
+    return response2console;
+};
+
+var checkUrl = function(fileurl, checksfile) {
+    var response2console = buildfn(fileurl, checksfile);
+    rest.get(fileurl).on('complete', response2console);
 };
 
 var clone = function(fn) {
@@ -63,10 +88,21 @@ var clone = function(fn) {
 
 if(require.main == module) {
     program
-        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
+	.option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
+	.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+	.option('-u, --url <url>', 'URL of a page')
+	.parse(process.argv);
+
+    var checkJson;
+    if (program.file) {
+	console.log("processing file %s", program.file);
+	$ = cheerioHtmlFile(program.file);
+	checkJson = checkHtmlFile($, program.checks);
+    }
+    if (program.url) {
+	console.log("processing url %s", program.url);
+	checkJson = checkURL(program.url, program.checks);
+    }
     var outJson = JSON.stringify(checkJson, null, 4);
     console.log(outJson);
 } else {
